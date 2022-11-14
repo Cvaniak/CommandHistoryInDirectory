@@ -1,0 +1,21 @@
+[tool.black]
+line-length = 120
+exclude = '''
+/(
+  | \.git
+  | venv
+)/
+'''
+
+[tool.flake8]
+max-line-length = 120
+
+[tool.pyright]
+include = ["."]
+exclude = [
+    "**/__pycache__",
+]
+defineConstant = { DEBUG = true }
+venvPath = "./venv"
+reportGeneralTypeIssues = true
+typeCheckingMode = "basic"
