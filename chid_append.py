@@ -18,7 +18,7 @@ def main():
     if dir.startswith(str(history_directory_path)):
         return
 
-    if command.startswith("t ") or command.startswith(f"{alias }") or command in [alias, "t", ""]:
+    if command.startswith("t ") or command.startswith(f"{alias} ") or command in [alias, "t", ""]:
         return
 
     destination_path = get_destination_path(history_directory_path, dir)
@@ -31,6 +31,6 @@ def main():
 
 if __name__ == "__main__":
     """
-    Arguments: Directory, Command, Date
+    Arguments: Directory, Command, Date, Alias
     """
     main()
