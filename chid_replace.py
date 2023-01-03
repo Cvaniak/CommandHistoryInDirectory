@@ -6,7 +6,7 @@ from chid_utils import get_root_path
 def main() -> str:
     alias = sys.argv[3]
 
-    if len(sys.argv) <= 2 or not (sys.argv[2].startswith("t ") or sys.argv[2].startswith(f"{alias} ")):
+    if len(sys.argv) <= 2 or not (sys.argv[2].startswith("chid ") or sys.argv[2].startswith(f"{alias} ")):
         return ""
 
     value = sys.argv[2].split(" ")[1]
