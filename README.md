@@ -9,6 +9,10 @@
 > :warning: Project is in testing phase so history format may
 change in next version
 
+# :flashlight: Demo
+
+![Demo](https://raw.githubusercontent.com/Cvaniak/CommandHistoryInDirectory/master/docs/DemoCHIDShort.gif)  
+
 # :bulb: Motivation
 
 This code stores command history for current directory
@@ -36,7 +40,10 @@ you can also setup custom shortcut for buffer replacement with `CHID_SHORTCUT`.
 
 # :hammer_and_wrench: Usage
 
-* To list commands used in current directory run `chid`
+* To list commands used in current directory run `chid`.
+* To list commands by time of first occurance use `-sf` or last occurance `-sl`.
+* By default `chid` displays first 20 lines of output.
+You can change it with `-l <num>` or `--limit <num>`.
 
 > Not tested well yet:
 >
@@ -46,8 +53,8 @@ and then running your shortcut (default to Ctrl+SPACE)
 # :memo: TODO
 
 * ⭕ Reverse List
-* ⭕ Display by date
-* ⭕ Limit output
+* ✔️  Display by date
+* ✔️  Limit output
 * ⭕ Better way to search commands in directory
 * ⭕ Support multiline commands (now they might not work well...)
 * ⭕ Sort by command (without arguments and flags)

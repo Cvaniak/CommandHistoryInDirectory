@@ -8,12 +8,12 @@ function _chid_append_new_command() {
 preexec_functions=("${preexec_functions[@]}" "_chid_append_new_command")
 
 function chid() {
-    python3 ~/this_history/chid_display.py "$PWD" "$@"
+    python3 ~/this_history/chid_command.py "$PWD" "$CHID_ALIAS" "$@"
 }
 
 function _chid_replace() {
     if [[ $BUFFER = chid* ]] || [[ $BUFFER = $CHID_ALIAS* ]]; then
-        a=$(python3 ~/this_history/chid_replace.py "$PWD" "$BUFFER")
+        a=$(python3 ~/this_history/chid_replace.py "$PWD" "$BUFFER" "$CHID_ALIAS")
         BUFFER="$a"
     fi
 }
