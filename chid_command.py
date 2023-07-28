@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 import sys
 from typing import Optional
@@ -11,7 +13,7 @@ except ImportError:
     ...
 
 
-def display_by_occurance(destination_file: Path, reverse: bool, limit: Optional[int] = None) -> list[tuple[str]]:
+def display_by_occurance(destination_file: Path, reverse: bool, limit: Optional[int] = None, contain: str = "") -> list[tuple[str]]:
     with open(destination_file, "r") as file:
         w = file.readlines()
         if reverse:
@@ -22,7 +24,7 @@ def display_by_occurance(destination_file: Path, reverse: bool, limit: Optional[
         result = []
         for line in w:
             time, command = split_line(line)
-            if command not in s:
+            if command not in s and contain in command:
                 index += 1
                 s.add(command)
                 # Index;Time;Percent;Command
@@ -32,9 +34,9 @@ def display_by_occurance(destination_file: Path, reverse: bool, limit: Optional[
         return result
 
 
-def display_by_frequency(destination_file: Path, limit: Optional[int] = None) -> list[tuple[str]]:
+def display_by_frequency(destination_file: Path, limit: Optional[int] = None, contain: str = "") -> list[tuple[str]]:
     with open(destination_file, "r") as file:
-        counted_uses = get_count_uses(file)
+        counted_uses = get_count_uses(file, contain)
 
         total = sum(counted_uses.values())
         result = []
@@ -67,7 +69,7 @@ def save_to_file(output):
 def display(output):
     ln = len(str(len(output)))
     for line in output:
-        index, time, percent, command = line.split(";")
+        index, time, percent, command = line.split(";", 3)
         if index:
             print(f"{index:<{ln}} ", end="")
         if percent:
@@ -83,14 +85,16 @@ def main():
     parser.add_argument("dir", help=argparse.SUPPRESS)
     parser.add_argument("alias", help=argparse.SUPPRESS)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("-sl", "--last-occurance", action="store_true", help="Sort by last execution")
-    group.add_argument("-sf", "--first-occurance", action="store_true", help="Sort by first execution")
+    group.add_argument("--last-occurance", "--sl", action="store_true", help="Sort by last execution")
+    group.add_argument("--first-occurance", "--sf", action="store_true", help="Sort by first execution")
     parser.add_argument("-l", "--limit", type=check_positive, help="Limit size of output", default=20)
     parser.add_argument("-d", "--delete", action="store_true", default=False)
+    parser.add_argument("-c", "--contain", help="String that command needs to contain", default="")
 
     args = parser.parse_args()
     dir = args.dir
     limit = args.limit
+    contain = args.contain
 
     history_directory_path = get_history_directory_path()
     destination_path = get_destination_path(history_directory_path, dir)
@@ -104,11 +108,11 @@ def main():
         sys.exit()
 
     if args.first_occurance:
-        output = display_by_occurance(destination_file, False, limit)
+        output = display_by_occurance(destination_file, False, limit, contain)
     elif args.last_occurance:
-        output = display_by_occurance(destination_file, True, limit)
+        output = display_by_occurance(destination_file, True, limit, contain)
     else:
-        output = display_by_frequency(destination_file, limit)
+        output = display_by_frequency(destination_file, limit, contain)
 
     save_to_file(output)
     display(output)

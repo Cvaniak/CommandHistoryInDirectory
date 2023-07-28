@@ -1,3 +1,4 @@
+from __future__ import annotations
 import sys
 
 from chid_utils import get_root_path

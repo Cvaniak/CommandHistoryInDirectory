@@ -1,3 +1,4 @@
+from __future__ import annotations
 from collections import Counter
 from io import TextIOWrapper
 from pathlib import Path
@@ -20,19 +21,18 @@ def get_destination_path(history_directory_path, dir) -> Path:
 
 
 def split_line(line: str) -> tuple[str, str]:
-    splited = line.strip().split(";")
-    if len(splited) != 2:
-        raise ValueError
-    return tuple(splited)
+    timestamp, _, command = line.strip().partition(";")
+    return (timestamp, command)
 
 
-def get_count_uses(file: TextIOWrapper) -> Counter:
+def get_count_uses(file: TextIOWrapper, contain: str = "") -> Counter:
     lines = file.readlines()
     counter = Counter()
     for line in lines:
         try:
             _, command = split_line(line)
-            counter[command] += 1
+            if contain in command:
+                counter[command] += 1
         except ValueError:
             # Better something than nothing
             ...
