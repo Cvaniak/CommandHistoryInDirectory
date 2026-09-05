@@ -28,7 +28,12 @@ class TestPackaging(unittest.TestCase):
         try:
             sys.argv = ["chid"]
             chid.cli.main()
-            self.assertEqual(sys.stdout.getvalue().strip(), "CHID initialized.")
+            output = sys.stdout.getvalue().strip()
+            # Default empty history displays notice or table
+            self.assertTrue(
+                "No matching command history found" in output
+                or "Frequent Commands" in output
+            )
         finally:
             sys.stdout = saved_stdout
 
