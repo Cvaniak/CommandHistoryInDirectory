@@ -1,4 +1,12 @@
-__pycache__
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 chid_commands
 dirs/
 last_output

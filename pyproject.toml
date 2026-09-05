@@ -1,21 +1,48 @@
-[tool.black]
-line-length = 120
-exclude = '''
-/(
-  | \.git
-  | venv
-)/
-'''
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
-[tool.flake8]
-max-line-length = 120
-
-[tool.pyright]
-include = ["."]
-exclude = [
-    "**/__pycache__",
+[project]
+name = "chid"
+version = "0.2.0"
+description = "Command History In Directory - Recency, frequency, and flag analysis for directory commands"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Cvaniak" }
 ]
-defineConstant = { DEBUG = true }
-venvPath = "./venv"
-reportGeneralTypeIssues = true
-typeCheckingMode = "basic"
+dependencies = [
+    "rich>=12.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",
+    "pytest>=7.0.0",
+    "mypy>=1.0.0"
+]
+
+[project.scripts]
+chid = "chid.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["chid*"]
+
+[tool.setuptools.package-data]
+chid = ["plugins/*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
