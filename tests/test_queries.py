@@ -273,6 +273,54 @@ class TestQueries(unittest.TestCase):
         self.assertIn("grep --invalid-flag", inv_names)
         self.assertIn("pythn main.py", inv_names)
 
+    def test_time_based_query_filtering(self) -> None:
+        # Insert commands across timestamps: 1000, 2000, 3000, 4000
+        for ts, cmd in [(1000, "git fetch"), (2000, "git pull"), (3000, "git status"), (4000, "git pull")]:
+            insert_command(
+                self.conn,
+                CommandRecord(
+                    directory="/time_test",
+                    command=cmd,
+                    timestamp=ts,
+                    session_id="s1",
+                    exit_code=0,
+                ),
+            )
+
+        # 1. query_recent with since_ms=2500 -> 3000 and 4000
+        recent_since = query_recent(self.conn, directory="/time_test", since_ms=2500)
+        self.assertEqual(len(recent_since), 2)
+        self.assertEqual([r.timestamp for r in recent_since], [4000, 3000])
+
+        # 2. query_recent with until_ms=2500 -> 1000 and 2000
+        recent_until = query_recent(self.conn, directory="/time_test", until_ms=2500)
+        self.assertEqual(len(recent_until), 2)
+        self.assertEqual([r.timestamp for r in recent_until], [2000, 1000])
+
+        # 3. query_recent with bounded window [1500, 3500] -> 2000 and 3000
+        recent_window = query_recent(self.conn, directory="/time_test", since_ms=1500, until_ms=3500)
+        self.assertEqual(len(recent_window), 2)
+        self.assertEqual([r.timestamp for r in recent_window], [3000, 2000])
+
+        # 4. query_first with bounded window [1500, 3500] -> 2000 and 3000 in ascending order
+        first_window = query_first(self.conn, directory="/time_test", since_ms=1500, until_ms=3500)
+        self.assertEqual(len(first_window), 2)
+        self.assertEqual([r.timestamp for r in first_window], [2000, 3000])
+
+        # 5. query_frequency with time filtering
+        # Over all time: total=4, "git pull"=2 (50%)
+        # For since_ms=2500: total=2 ("git status"=1, "git pull"=1), each 50%
+        freq = query_frequency(self.conn, directory="/time_test", since_ms=2500)
+        self.assertEqual(len(freq), 2)
+        self.assertEqual(freq[0].count, 1)
+        self.assertEqual(freq[0].percentage, 50.0)
+
+        # 6. query_matching_commands with time window
+        matches = query_matching_commands(self.conn, directory="/time_test", keyword="pull", until_ms=2500)
+        self.assertEqual(matches, ["git pull"])
+        no_matches = query_matching_commands(self.conn, directory="/time_test", keyword="fetch", since_ms=2500)
+        self.assertEqual(no_matches, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,11 +4,12 @@ import io
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 from chid.cli import main
-from chid.db import get_connection
+from chid.db import get_connection, initialize_schema
 from chid.replace import resolve_buffer_replacement, write_session_cache
 
 
@@ -162,6 +163,61 @@ class TestCLI(unittest.TestCase):
         self.assertNotIn("git status", cmds_inv)
         self.assertIn("gitt branch", cmds_inv)
         self.assertIn("grep --wrong-flag", cmds_inv)
+
+    def test_time_filtering_cli(self) -> None:
+        cwd = str(Path.cwd().resolve())
+        conn = get_connection(self.db_path)
+        initialize_schema(conn)
+        now_ms = int(time.time() * 1000)
+
+        # 1. Command run right now (1s ago)
+        # 2. Command run 2 hours ago
+        # 3. Command run yesterday (26 hours ago)
+        # 4. Command run 3 days ago (72 hours ago)
+        records = [
+            ("echo now", now_ms - 1000),
+            ("echo 2hours_ago", now_ms - 2 * 3600 * 1000),
+            ("echo yesterday", now_ms - 26 * 3600 * 1000),
+            ("echo 3days_ago", now_ms - 72 * 3600 * 1000),
+        ]
+        for cmd, ts in records:
+            conn.execute(
+                "INSERT INTO command_history (directory, command, timestamp, session_id, exit_code) VALUES (?, ?, ?, ?, 0);",
+                (cwd, cmd, ts, "s-time"),
+            )
+        conn.close()
+
+        # Test --last 30m
+        out_last, _ = self._run_cli(["-r", "--raw", "--last", "30m"])
+        cmds_last = [c for c in out_last.strip().split("\n") if c]
+        self.assertEqual(cmds_last, ["echo now"])
+
+        # Test --since / --after 3h
+        out_since, _ = self._run_cli(["-r", "--raw", "--since", "3h"])
+        cmds_since = [c for c in out_since.strip().split("\n") if c]
+        self.assertIn("echo now", cmds_since)
+        self.assertIn("echo 2hours_ago", cmds_since)
+        self.assertNotIn("echo yesterday", cmds_since)
+
+        # Test --until / --before 3h
+        out_until, _ = self._run_cli(["-r", "--raw", "--until", "3h"])
+        cmds_until = [c for c in out_until.strip().split("\n") if c]
+        self.assertNotIn("echo now", cmds_until)
+        self.assertNotIn("echo 2hours_ago", cmds_until)
+        self.assertIn("echo yesterday", cmds_until)
+        self.assertIn("echo 3days_ago", cmds_until)
+
+        # Test --range 3h..1h
+        out_range, _ = self._run_cli(["-r", "--raw", "--range", "3h..1h"])
+        cmds_range = [c for c in out_range.strip().split("\n") if c]
+        self.assertEqual(cmds_range, ["echo 2hours_ago"])
+
+        # Test conflicting flags raise SystemExit (via parser.error)
+        with self.assertRaises(SystemExit):
+            self._run_cli(["--today", "--yesterday"])
+
+        with self.assertRaises(SystemExit):
+            self._run_cli(["--since", "invalid_time_xyz"])
 
 
 if __name__ == "__main__":

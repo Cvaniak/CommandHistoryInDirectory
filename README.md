@@ -105,6 +105,29 @@ chid --flags git commit
 chid --clear
 ```
 
+### Time-Based History Filtering
+Filter command history by relative durations, preset periods, or date ranges:
+```bash
+# Commands executed in the last 30 minutes
+chid -r --last 30m
+
+# Commands executed today or yesterday
+chid --today
+chid -r --yesterday
+
+# Commands executed after/since a specific time (relative duration, date, or time of day)
+chid --since 2h
+chid --after 2026-09-01
+
+# Commands executed before/until a specific time
+chid --until 1d
+chid --before 18:00
+
+# Commands within a specific time window (start..end)
+chid --range 2h..30m
+chid -r --range 2026-09-01..2026-09-05
+```
+
 ---
 
 ## ⌨️ Interactive Buffer Replacement
@@ -133,6 +156,12 @@ Instead of retyping long commands, CHID lets you recall any displayed command in
 | `-F`, `--flags <TOOL> [SUBCMD]` | Analyze flag and option frequencies for tool. |
 | `--success` | Show only commands that exited with code 0. |
 | `--failed` | Show only commands that exited with non-zero exit code. |
+| `--since`, `--after <TIME>` | Show commands executed after given time (e.g. `30m`, `2h`, `1d`, `YYYY-MM-DD`, `HH:MM`). |
+| `--until`, `--before <TIME>` | Show commands executed before given time. |
+| `--last <DURATION>` | Show commands from the last duration (e.g. `15m`, `2h`, `1d`). |
+| `--today` | Show commands executed today. |
+| `--yesterday` | Show commands executed yesterday. |
+| `--range <START..END>` | Show commands within a time range (e.g. `2h..30m` or `2026-09-01..2026-09-05`). |
 | `--raw` | Output unformatted command lines (one per line, ideal for scripting). |
 | `--clear` | Delete all history records for the current directory. |
 | `--version` | Display CHID version information. |

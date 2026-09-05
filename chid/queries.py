@@ -78,6 +78,8 @@ def query_frequency(
     git_root: str | None = None,
     include_invalid: bool = False,
     only_invalid: bool = False,
+    since_ms: int | None = None,
+    until_ms: int | None = None,
 ) -> list[FrequencyStat]:
     """Return command frequency metrics, percentage of total executions, and last run timestamp."""
     count_params: list[object] = []
@@ -87,6 +89,14 @@ def query_frequency(
         search_cond = " AND command LIKE ?"
         count_params.append(f"%{search}%")
 
+    time_cond = ""
+    if since_ms is not None:
+        time_cond += " AND timestamp >= ?"
+        count_params.append(since_ms)
+    if until_ms is not None:
+        time_cond += " AND timestamp <= ?"
+        count_params.append(until_ms)
+
     if only_invalid:
         valid_cond = f" AND exit_code IN ({','.join(str(c) for c in INVALID_EXIT_CODES)})"
     elif not include_invalid:
@@ -94,7 +104,7 @@ def query_frequency(
     else:
         valid_cond = ""
 
-    total_query = f"SELECT COUNT(*) AS total FROM command_history WHERE {scope_cond}{search_cond}{valid_cond};"
+    total_query = f"SELECT COUNT(*) AS total FROM command_history WHERE {scope_cond}{search_cond}{time_cond}{valid_cond};"
     total_row = conn.execute(total_query, count_params).fetchone()
     total_count = total_row["total"] if total_row else 0
 
@@ -105,6 +115,10 @@ def query_frequency(
     scope_cond_stats = _build_scope_clause(directory, git_root, stats_params)
     if search:
         stats_params.append(f"%{search}%")
+    if since_ms is not None:
+        stats_params.append(since_ms)
+    if until_ms is not None:
+        stats_params.append(until_ms)
     stats_params.append(limit)
 
     stats_query = f"""
@@ -113,7 +127,7 @@ def query_frequency(
         COUNT(*) AS cmd_count,
         MAX(timestamp) AS last_run
     FROM command_history
-    WHERE {scope_cond_stats}{search_cond}{valid_cond}
+    WHERE {scope_cond_stats}{search_cond}{time_cond}{valid_cond}
     GROUP BY command
     ORDER BY cmd_count DESC, last_run DESC
     LIMIT ?;
@@ -144,6 +158,8 @@ def query_recent(
     failed_only: bool = False,
     include_invalid: bool = False,
     only_invalid: bool = False,
+    since_ms: int | None = None,
+    until_ms: int | None = None,
 ) -> list[CommandRecord]:
     """Return recent command executions sorted by timestamp descending."""
     params: list[object] = []
@@ -153,6 +169,13 @@ def query_recent(
     if search:
         conditions.append("command LIKE ?")
         params.append(f"%{search}%")
+
+    if since_ms is not None:
+        conditions.append("timestamp >= ?")
+        params.append(since_ms)
+    if until_ms is not None:
+        conditions.append("timestamp <= ?")
+        params.append(until_ms)
 
     if only_invalid:
         conditions.append(f"exit_code IN ({','.join(str(c) for c in INVALID_EXIT_CODES)})")
@@ -201,6 +224,8 @@ def query_first(
     git_root: str | None = None,
     include_invalid: bool = False,
     only_invalid: bool = False,
+    since_ms: int | None = None,
+    until_ms: int | None = None,
 ) -> list[CommandRecord]:
     """Return command executions sorted by timestamp ascending (earliest first)."""
     params: list[object] = []
@@ -210,6 +235,13 @@ def query_first(
     if search:
         conditions.append("command LIKE ?")
         params.append(f"%{search}%")
+
+    if since_ms is not None:
+        conditions.append("timestamp >= ?")
+        params.append(since_ms)
+    if until_ms is not None:
+        conditions.append("timestamp <= ?")
+        params.append(until_ms)
 
     if only_invalid:
         conditions.append(f"exit_code IN ({','.join(str(c) for c in INVALID_EXIT_CODES)})")
@@ -252,11 +284,21 @@ def query_matching_commands(
     keyword: str,
     git_root: str | None = None,
     include_invalid: bool = False,
+    since_ms: int | None = None,
+    until_ms: int | None = None,
 ) -> list[str]:
     """Return distinct commands containing keyword, ordered by most recent occurrence."""
     params: list[object] = []
     scope_cond = _build_scope_clause(directory, git_root, params)
     params.append(f"%{keyword}%")
+
+    time_cond = ""
+    if since_ms is not None:
+        time_cond += " AND timestamp >= ?"
+        params.append(since_ms)
+    if until_ms is not None:
+        time_cond += " AND timestamp <= ?"
+        params.append(until_ms)
 
     valid_cond = ""
     if not include_invalid:
@@ -265,7 +307,7 @@ def query_matching_commands(
     query = f"""
     SELECT command, MAX(timestamp) AS last_seen
     FROM command_history
-    WHERE {scope_cond} AND command LIKE ?{valid_cond}
+    WHERE {scope_cond} AND command LIKE ?{time_cond}{valid_cond}
     GROUP BY command
     ORDER BY last_seen DESC;
     """

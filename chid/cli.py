@@ -252,6 +252,43 @@ def _run_query_cli(argv: list[str]) -> None:
         action="store_true",
         help="Output raw command lines without formatting or tables (one per line).",
     )
+    time_group = parser.add_argument_group("Time Filters")
+    time_group.add_argument(
+        "--since",
+        "--after",
+        type=str,
+        metavar="TIME",
+        help="Show commands executed after given time (e.g. 30m, 2h, 1d, 2026-09-01, 14:00).",
+    )
+    time_group.add_argument(
+        "--until",
+        "--before",
+        type=str,
+        metavar="TIME",
+        help="Show commands executed before given time.",
+    )
+    time_group.add_argument(
+        "--last",
+        type=str,
+        metavar="DURATION",
+        help="Show commands from the last duration (e.g. 15m, 2h, 1d).",
+    )
+    time_group.add_argument(
+        "--today",
+        action="store_true",
+        help="Show commands executed today.",
+    )
+    time_group.add_argument(
+        "--yesterday",
+        action="store_true",
+        help="Show commands executed yesterday.",
+    )
+    time_group.add_argument(
+        "--range",
+        type=str,
+        metavar="START..END",
+        help="Show commands within a time range (e.g. '2026-09-01..2026-09-05' or '2h..30m').",
+    )
     parser.add_argument(
         "index",
         nargs="?",
@@ -260,6 +297,20 @@ def _run_query_cli(argv: list[str]) -> None:
     )
 
     args = parser.parse_args(argv)
+
+    from chid.time_utils import resolve_time_filters
+
+    try:
+        since_ms, until_ms, time_label = resolve_time_filters(
+            since=args.since,
+            until=args.until,
+            last=args.last,
+            today=args.today,
+            yesterday=args.yesterday,
+            range_str=args.range,
+        )
+    except ValueError as e:
+        parser.error(str(e))
 
     session_id = _get_active_session_id()
     cwd = str(Path.cwd().resolve())
@@ -301,6 +352,8 @@ def _run_query_cli(argv: list[str]) -> None:
             limit=1000,
             git_root=git_root,
             include_invalid=args.all,
+            since_ms=since_ms,
+            until_ms=until_ms,
         )
         conn.close()
 
@@ -310,6 +363,9 @@ def _run_query_cli(argv: list[str]) -> None:
         analysis = analyze_tool_flags(cmd_lines, target_tool, target_subcommand)
         render_flag_analysis(analysis)
         return
+
+    scope_desc = f"Repo: {git_root}" if git_root else f"Dir: {cwd}"
+    scope_str = f"{scope_desc}, {time_label}" if time_label else scope_desc
 
     # Determine display mode
     if args.invalid or args.recent or args.success or args.failed:
@@ -324,13 +380,14 @@ def _run_query_cli(argv: list[str]) -> None:
             failed_only=args.failed,
             include_invalid=args.all,
             only_invalid=args.invalid,
+            since_ms=since_ms,
+            until_ms=until_ms,
         )
         commands = [r.command for r in records]
-        title_scope = f"Repo: {git_root}" if git_root else f"Dir: {cwd}"
         if args.invalid:
-            title = f"Invalid Commands & Parameter Errors ({title_scope})"
+            title = f"Invalid Commands & Parameter Errors ({scope_str})"
         else:
-            title = f"Recent Commands ({title_scope})"
+            title = f"Recent Commands ({scope_str})"
         entries = records
     elif args.first:
         mode = "first"
@@ -342,10 +399,11 @@ def _run_query_cli(argv: list[str]) -> None:
             git_root=git_root,
             include_invalid=args.all,
             only_invalid=args.invalid,
+            since_ms=since_ms,
+            until_ms=until_ms,
         )
         commands = [r.command for r in records]
-        title_scope = f"Repo: {git_root}" if git_root else f"Dir: {cwd}"
-        title = f"Chronological Commands ({title_scope})"
+        title = f"Chronological Commands ({scope_str})"
         entries = records
     else:
         # Default: frequency mode
@@ -358,10 +416,11 @@ def _run_query_cli(argv: list[str]) -> None:
             git_root=git_root,
             include_invalid=args.all,
             only_invalid=args.invalid,
+            since_ms=since_ms,
+            until_ms=until_ms,
         )
         commands = [s.command for s in freq_stats]
-        title_scope = f"Repo: {git_root}" if git_root else f"Dir: {cwd}"
-        title = f"Frequent Commands ({title_scope})"
+        title = f"Frequent Commands ({scope_str})"
         entries = freq_stats
 
     conn.close()
