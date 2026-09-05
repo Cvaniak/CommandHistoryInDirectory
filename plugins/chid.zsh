@@ -7,14 +7,14 @@ _chid_preexec() {
     # Ignore chid or alias invocations
     [[ "$1" == chid* || ( -n "$CHID_ALIAS" && "$1" == "$CHID_ALIAS"* ) ]] && return
     _CHID_ACTIVE=1
-    chid record-start "$PWD" "$CHID_SESSION" "$1" ${CHID_ALIAS:+--alias "$CHID_ALIAS"} 2>/dev/null
+    command chid record-start "$PWD" "$CHID_SESSION" "$1" ${CHID_ALIAS:+--alias "$CHID_ALIAS"} 2>/dev/null
 }
 
 _chid_precmd() {
     local last_status=$?
     if [[ -n "$_CHID_ACTIVE" ]]; then
         unset _CHID_ACTIVE
-        chid record-finish "$CHID_SESSION" "$last_status" 2>/dev/null
+        command chid record-finish "$CHID_SESSION" "$last_status" 2>/dev/null
     fi
     return $last_status
 }
@@ -27,7 +27,7 @@ function _chid_replace() {
     local alias_pattern="${CHID_ALIAS:-chid}"
     if [[ "$BUFFER" =~ ^[[:space:]]*(chid|${alias_pattern})[[:space:]]+[0-9]+[[:space:]]*$ ]]; then
         local replaced
-        replaced=$(chid replace "$CHID_SESSION" "$BUFFER" ${CHID_ALIAS:+--alias "$CHID_ALIAS"} 2>/dev/null)
+        replaced=$(command chid replace "$CHID_SESSION" "$BUFFER" ${CHID_ALIAS:+--alias "$CHID_ALIAS"} 2>/dev/null)
         if [[ -n "$replaced" ]]; then
             BUFFER="$replaced"
             CURSOR=$#BUFFER
@@ -37,3 +37,19 @@ function _chid_replace() {
 zle -N _chid_replace
 bindkey "${CHID_SHORTCUT:-^ }" _chid_replace
 [[ "${CHID_SHORTCUT:-^ }" == '^ ' ]] && bindkey '^@' _chid_replace
+
+chid() {
+    if [[ "$#" -eq 1 && "$1" =~ ^[0-9]+$ ]]; then
+        local cmd
+        cmd=$(command chid replace "$CHID_SESSION" "chid $1" ${CHID_ALIAS:+--alias "$CHID_ALIAS"} 2>/dev/null)
+        if [[ -n "$cmd" && "$cmd" != "chid $1" ]]; then
+            print -z "$cmd"
+            return 0
+        fi
+    fi
+    command chid "$@"
+}
+
+if [[ -n "$CHID_ALIAS" ]]; then
+    alias "$CHID_ALIAS=chid"
+fi
