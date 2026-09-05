@@ -22,20 +22,20 @@ export CHID_SESSION="${CHID_SESSION:-$$}"
 
 _chid_preexec() {
     _CHID_LAST_CMD="$1"
-    chid record-start "$PWD" "$CHID_SESSION" "$1" &>/dev/null &!
+    command chid record-start "$PWD" "$CHID_SESSION" "$1" &>/dev/null &!
 }
 
 _chid_precmd() {
     local exit_code=$?
     if [[ -n "$_CHID_LAST_CMD" ]]; then
-        chid record-finish "$CHID_SESSION" "$exit_code" &>/dev/null &!
+        command chid record-finish "$CHID_SESSION" "$exit_code" &>/dev/null &!
         _CHID_LAST_CMD=""
     fi
 }
 
 _chid_accept_line() {
     local replaced
-    replaced=$(chid replace "$CHID_SESSION" "$BUFFER")
+    replaced=$(command chid replace "$CHID_SESSION" "$BUFFER")
     if [[ -n "$replaced" && "$replaced" != "$BUFFER" ]]; then
         BUFFER="$replaced"
         CURSOR=$#BUFFER
@@ -53,13 +53,13 @@ _CHID_LAST_CMD=""
 
 _chid_preexec() {
     _CHID_LAST_CMD="$1"
-    chid record-start "$PWD" "$CHID_SESSION" "$1" &>/dev/null &
+    command chid record-start "$PWD" "$CHID_SESSION" "$1" &>/dev/null &
 }
 
 _chid_prompt_command() {
     local exit_code=$?
     if [ -n "$_CHID_LAST_CMD" ]; then
-        chid record-finish "$CHID_SESSION" "$exit_code" &>/dev/null &
+        command chid record-finish "$CHID_SESSION" "$exit_code" &>/dev/null &
         _CHID_LAST_CMD=""
     fi
 }
@@ -72,14 +72,14 @@ set -g _chid_last_cmd ""
 
 function _chid_preexec --on-event fish_preexec
     set -g _chid_last_cmd $argv[1]
-    chid record-start $PWD $CHID_SESSION $argv[1] &>/dev/null &
+    command chid record-start $PWD $CHID_SESSION $argv[1] &>/dev/null &
     disown
 end
 
 function _chid_postexec --on-event fish_postexec
     set -l exit_code $status
     if test -n "$_chid_last_cmd"
-        chid record-finish $CHID_SESSION $exit_code &>/dev/null &
+        command chid record-finish $CHID_SESSION $exit_code &>/dev/null &
         disown
         set -g _chid_last_cmd ""
     end
@@ -206,6 +206,18 @@ def _run_query_cli(argv: list[str]) -> None:
         help="Scope search to the current Git repository root instead of the current directory.",
     )
     parser.add_argument(
+        "-a",
+        "--all",
+        action="store_true",
+        help="Include all commands, including typos and bad parameters (filtered out by default).",
+    )
+    parser.add_argument(
+        "--invalid",
+        "--bad",
+        action="store_true",
+        help="Display only commands that were incorrect (e.g. typos, command not found) or had invalid parameters.",
+    )
+    parser.add_argument(
         "-F",
         "--flags",
         nargs="+",
@@ -280,6 +292,7 @@ def _run_query_cli(argv: list[str]) -> None:
             directory=cwd,
             limit=1000,
             git_root=git_root,
+            include_invalid=args.all,
         )
         conn.close()
 
@@ -291,7 +304,7 @@ def _run_query_cli(argv: list[str]) -> None:
         return
 
     # Determine display mode
-    if args.recent or args.success or args.failed:
+    if args.invalid or args.recent or args.success or args.failed:
         mode = "recent"
         records = query_recent(
             conn,
@@ -301,10 +314,15 @@ def _run_query_cli(argv: list[str]) -> None:
             git_root=git_root,
             success_only=args.success,
             failed_only=args.failed,
+            include_invalid=args.all,
+            only_invalid=args.invalid,
         )
         commands = [r.command for r in records]
         title_scope = f"Repo: {git_root}" if git_root else f"Dir: {cwd}"
-        title = f"Recent Commands ({title_scope})"
+        if args.invalid:
+            title = f"Invalid Commands & Parameter Errors ({title_scope})"
+        else:
+            title = f"Recent Commands ({title_scope})"
         entries = records
     elif args.first:
         mode = "first"
@@ -314,6 +332,8 @@ def _run_query_cli(argv: list[str]) -> None:
             limit=args.limit,
             search=args.search,
             git_root=git_root,
+            include_invalid=args.all,
+            only_invalid=args.invalid,
         )
         commands = [r.command for r in records]
         title_scope = f"Repo: {git_root}" if git_root else f"Dir: {cwd}"
@@ -328,6 +348,8 @@ def _run_query_cli(argv: list[str]) -> None:
             limit=args.limit,
             search=args.search,
             git_root=git_root,
+            include_invalid=args.all,
+            only_invalid=args.invalid,
         )
         commands = [s.command for s in freq_stats]
         title_scope = f"Repo: {git_root}" if git_root else f"Dir: {cwd}"

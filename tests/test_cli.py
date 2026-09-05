@@ -128,6 +128,42 @@ class TestCLI(unittest.TestCase):
         out_after, _ = self._run_cli(["-r", "--raw"])
         self.assertEqual(out_after.strip(), "")
 
+    def test_invalid_and_all_cli_flags(self) -> None:
+        cwd = str(Path.cwd().resolve())
+        # Valid command
+        self._run_cli(["record-start", cwd, "test-session-cli", "git status"])
+        self._run_cli(["record-finish", "test-session-cli", "0"])
+
+        # Typo / not found
+        self._run_cli(["record-start", cwd, "test-session-cli", "gitt branch"])
+        self._run_cli(["record-finish", "test-session-cli", "127"])
+
+        # Bad arguments
+        self._run_cli(["record-start", cwd, "test-session-cli", "grep --wrong-flag"])
+        self._run_cli(["record-finish", "test-session-cli", "2"])
+
+        # Default query hides typos and bad args
+        out_default, _ = self._run_cli(["-r", "--raw"])
+        cmds = out_default.strip().split("\n")
+        self.assertIn("git status", cmds)
+        self.assertNotIn("gitt branch", cmds)
+        self.assertNotIn("grep --wrong-flag", cmds)
+
+        # --all shows everything
+        out_all, _ = self._run_cli(["-r", "-a", "--raw"])
+        cmds_all = out_all.strip().split("\n")
+        self.assertIn("git status", cmds_all)
+        self.assertIn("gitt branch", cmds_all)
+        self.assertIn("grep --wrong-flag", cmds_all)
+
+        # --invalid shows only the bad commands
+        out_inv, _ = self._run_cli(["--invalid", "--raw"])
+        cmds_inv = out_inv.strip().split("\n")
+        self.assertNotIn("git status", cmds_inv)
+        self.assertIn("gitt branch", cmds_inv)
+        self.assertIn("grep --wrong-flag", cmds_inv)
+
 
 if __name__ == "__main__":
     unittest.main()
+

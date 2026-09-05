@@ -128,6 +128,8 @@ Instead of retyping long commands, CHID lets you recall any displayed command in
 | `-R`, `--repo` | Scope query to the current Git repository root. |
 | `-n`, `-l`, `--limit <N>` | Limit the number of displayed records (default: 20). |
 | `-s`, `-q`, `--search <STR>` | Filter records matching keyword substring. |
+| `-a`, `--all` | Include all commands, including typos and bad parameters (filtered out by default). |
+| `--invalid`, `--bad` | Display only commands that were incorrect (e.g. typos, command not found) or had invalid parameters. |
 | `-F`, `--flags <TOOL> [SUBCMD]` | Analyze flag and option frequencies for tool. |
 | `--success` | Show only commands that exited with code 0. |
 | `--failed` | Show only commands that exited with non-zero exit code. |

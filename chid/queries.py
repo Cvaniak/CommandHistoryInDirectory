@@ -11,6 +11,8 @@ from chid.models import CommandRecord, FrequencyStat
 if TYPE_CHECKING:
     from typing import Sequence
 
+INVALID_EXIT_CODES = (2, 64, 126, 127)
+
 
 def insert_command(conn: sqlite3.Connection, record: CommandRecord) -> int:
     """Insert a new command record within an immediate transaction and return its ID."""
@@ -74,6 +76,8 @@ def query_frequency(
     limit: int = 20,
     search: str = "",
     git_root: str | None = None,
+    include_invalid: bool = False,
+    only_invalid: bool = False,
 ) -> list[FrequencyStat]:
     """Return command frequency metrics, percentage of total executions, and last run timestamp."""
     count_params: list[object] = []
@@ -83,7 +87,14 @@ def query_frequency(
         search_cond = " AND command LIKE ?"
         count_params.append(f"%{search}%")
 
-    total_query = f"SELECT COUNT(*) AS total FROM command_history WHERE {scope_cond}{search_cond};"
+    if only_invalid:
+        valid_cond = f" AND exit_code IN ({','.join(str(c) for c in INVALID_EXIT_CODES)})"
+    elif not include_invalid:
+        valid_cond = f" AND (exit_code IS NULL OR exit_code NOT IN ({','.join(str(c) for c in INVALID_EXIT_CODES)}))"
+    else:
+        valid_cond = ""
+
+    total_query = f"SELECT COUNT(*) AS total FROM command_history WHERE {scope_cond}{search_cond}{valid_cond};"
     total_row = conn.execute(total_query, count_params).fetchone()
     total_count = total_row["total"] if total_row else 0
 
@@ -102,7 +113,7 @@ def query_frequency(
         COUNT(*) AS cmd_count,
         MAX(timestamp) AS last_run
     FROM command_history
-    WHERE {scope_cond_stats}{search_cond}
+    WHERE {scope_cond_stats}{search_cond}{valid_cond}
     GROUP BY command
     ORDER BY cmd_count DESC, last_run DESC
     LIMIT ?;
@@ -131,6 +142,8 @@ def query_recent(
     git_root: str | None = None,
     success_only: bool = False,
     failed_only: bool = False,
+    include_invalid: bool = False,
+    only_invalid: bool = False,
 ) -> list[CommandRecord]:
     """Return recent command executions sorted by timestamp descending."""
     params: list[object] = []
@@ -140,10 +153,17 @@ def query_recent(
     if search:
         conditions.append("command LIKE ?")
         params.append(f"%{search}%")
-    if success_only:
+
+    if only_invalid:
+        conditions.append(f"exit_code IN ({','.join(str(c) for c in INVALID_EXIT_CODES)})")
+    elif success_only:
         conditions.append("exit_code = 0")
     elif failed_only:
         conditions.append("exit_code != 0 AND exit_code IS NOT NULL")
+    elif not include_invalid:
+        conditions.append(
+            f"(exit_code IS NULL OR exit_code NOT IN ({','.join(str(c) for c in INVALID_EXIT_CODES)}))"
+        )
 
     where_str = " AND ".join(conditions)
     params.append(limit)
@@ -179,6 +199,8 @@ def query_first(
     limit: int = 20,
     search: str = "",
     git_root: str | None = None,
+    include_invalid: bool = False,
+    only_invalid: bool = False,
 ) -> list[CommandRecord]:
     """Return command executions sorted by timestamp ascending (earliest first)."""
     params: list[object] = []
@@ -188,6 +210,13 @@ def query_first(
     if search:
         conditions.append("command LIKE ?")
         params.append(f"%{search}%")
+
+    if only_invalid:
+        conditions.append(f"exit_code IN ({','.join(str(c) for c in INVALID_EXIT_CODES)})")
+    elif not include_invalid:
+        conditions.append(
+            f"(exit_code IS NULL OR exit_code NOT IN ({','.join(str(c) for c in INVALID_EXIT_CODES)}))"
+        )
 
     where_str = " AND ".join(conditions)
     params.append(limit)
@@ -222,16 +251,21 @@ def query_matching_commands(
     directory: str,
     keyword: str,
     git_root: str | None = None,
+    include_invalid: bool = False,
 ) -> list[str]:
     """Return distinct commands containing keyword, ordered by most recent occurrence."""
     params: list[object] = []
     scope_cond = _build_scope_clause(directory, git_root, params)
     params.append(f"%{keyword}%")
 
+    valid_cond = ""
+    if not include_invalid:
+        valid_cond = f" AND (exit_code IS NULL OR exit_code NOT IN ({','.join(str(c) for c in INVALID_EXIT_CODES)}))"
+
     query = f"""
     SELECT command, MAX(timestamp) AS last_seen
     FROM command_history
-    WHERE {scope_cond} AND command LIKE ?
+    WHERE {scope_cond} AND command LIKE ?{valid_cond}
     GROUP BY command
     ORDER BY last_seen DESC;
     """

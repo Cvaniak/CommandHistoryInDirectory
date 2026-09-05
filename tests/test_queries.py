@@ -231,6 +231,49 @@ class TestQueries(unittest.TestCase):
         self.assertEqual(len(query_recent(self.conn, "/to_delete")), 0)
         self.assertEqual(len(query_recent(self.conn, "/keep")), 1)
 
+    def test_invalid_command_filtering(self) -> None:
+        # Valid command
+        insert_command(
+            self.conn,
+            CommandRecord(directory="/app", command="pytest", timestamp=100, session_id="s1", exit_code=0),
+        )
+        # Runtime failure (e.g. tests failed)
+        insert_command(
+            self.conn,
+            CommandRecord(directory="/app", command="npm test", timestamp=200, session_id="s1", exit_code=1),
+        )
+        # Bad arguments / syntax error (exit code 2)
+        insert_command(
+            self.conn,
+            CommandRecord(directory="/app", command="grep --invalid-flag", timestamp=300, session_id="s1", exit_code=2),
+        )
+        # Command not found typo (exit code 127)
+        insert_command(
+            self.conn,
+            CommandRecord(directory="/app", command="pythn main.py", timestamp=400, session_id="s1", exit_code=127),
+        )
+
+        # Default query should filter out exit codes 2 and 127
+        recent = query_recent(self.conn, directory="/app")
+        self.assertEqual(len(recent), 2)
+        cmd_names = [r.command for r in recent]
+        self.assertIn("npm test", cmd_names)
+        self.assertIn("pytest", cmd_names)
+        self.assertNotIn("grep --invalid-flag", cmd_names)
+        self.assertNotIn("pythn main.py", cmd_names)
+
+        # include_invalid=True should return all 4
+        all_recent = query_recent(self.conn, directory="/app", include_invalid=True)
+        self.assertEqual(len(all_recent), 4)
+
+        # only_invalid=True should return only 2 and 127
+        invalid_only = query_recent(self.conn, directory="/app", only_invalid=True)
+        self.assertEqual(len(invalid_only), 2)
+        inv_names = [r.command for r in invalid_only]
+        self.assertIn("grep --invalid-flag", inv_names)
+        self.assertIn("pythn main.py", inv_names)
+
 
 if __name__ == "__main__":
     unittest.main()
+

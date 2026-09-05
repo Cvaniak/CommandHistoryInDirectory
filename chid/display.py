@@ -27,11 +27,21 @@ def format_duration(duration_ms: int | None) -> str:
 
 
 def format_status_icon(exit_code: int | None) -> str:
-    """Format exit code with a status icon and coloring."""
+    """Format exit code with semantic categorization badges."""
     if exit_code is None:
-        return ""
+        return "[dim]…[/dim]"
     if exit_code == 0:
         return "[bold green]✔[/bold green]"
+    if exit_code == 127:
+        return "[bold magenta]✘ NotFound[/bold magenta]"
+    if exit_code in (2, 64):
+        return "[bold yellow]✘ BadArgs[/bold yellow]"
+    if exit_code == 126:
+        return "[bold red]✘ PermDenied[/bold red]"
+    if exit_code == 130:
+        return "[dim cyan]✘ Cancelled[/dim cyan]"
+    if exit_code == 137:
+        return "[bold red]✘ Killed[/bold red]"
     return f"[bold red]✘ {exit_code}[/bold red]"
 
 
