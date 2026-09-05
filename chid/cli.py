@@ -146,6 +146,11 @@ def _handle_replace(args: list[str]) -> None:
 def _handle_init(args: list[str]) -> None:
     """Print shell hook integration script."""
     shell = args[0].lower() if args else "zsh"
+    plugin_path = Path(__file__).parent / "plugins" / f"chid.{shell}"
+    if plugin_path.is_file():
+        print(plugin_path.read_text(encoding="utf-8").strip())
+        return
+
     template = INIT_TEMPLATES.get(shell)
     if template:
         print(template.strip())
