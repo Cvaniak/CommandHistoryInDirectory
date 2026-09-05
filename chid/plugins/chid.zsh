@@ -7,14 +7,14 @@ _chid_preexec() {
     # Ignore chid or alias invocations
     [[ "$1" == chid* || ( -n "$CHID_ALIAS" && "$1" == "$CHID_ALIAS"* ) ]] && return
     _CHID_ACTIVE=1
-    command chid record-start "$PWD" "$CHID_SESSION" "$1" ${CHID_ALIAS:+--alias "$CHID_ALIAS"} 2>/dev/null
+    command chid record-start "$PWD" "$CHID_SESSION" "$1" ${CHID_ALIAS:+--alias "$CHID_ALIAS"} &>/dev/null &!
 }
 
 _chid_precmd() {
     local last_status=$?
     if [[ -n "$_CHID_ACTIVE" ]]; then
         unset _CHID_ACTIVE
-        command chid record-finish "$CHID_SESSION" "$last_status" 2>/dev/null
+        command chid record-finish "$CHID_SESSION" "$last_status" &>/dev/null &!
     fi
     return $last_status
 }

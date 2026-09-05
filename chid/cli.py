@@ -96,18 +96,22 @@ def _get_active_session_id() -> str:
 def _handle_record_start(args: list[str]) -> None:
     """Fast-path handler for pre-execution recording."""
     alias: str | None = None
-    idx = 0
-    if len(args) >= 2 and args[0] in ("--alias", "-a"):
-        alias = args[1]
-        idx = 2
+    clean_args: list[str] = []
+    i = 0
+    while i < len(args):
+        if args[i] in ("--alias", "-a") and i + 1 < len(args):
+            alias = args[i + 1]
+            i += 2
+        else:
+            clean_args.append(args[i])
+            i += 1
 
-    remaining = args[idx:]
-    if len(remaining) < 3:
+    if len(clean_args) < 3:
         return
 
-    directory = remaining[0]
-    session_id = remaining[1]
-    command = " ".join(remaining[2:])
+    directory = clean_args[0]
+    session_id = clean_args[1]
+    command = " ".join(clean_args[2:])
     record_command_start(directory=directory, command=command, session_id=session_id, alias=alias)
 
 
@@ -126,19 +130,23 @@ def _handle_record_finish(args: list[str]) -> None:
 def _handle_replace(args: list[str]) -> None:
     """Fast-path handler for interactive buffer replacement."""
     alias: str | None = None
-    idx = 0
-    if len(args) >= 2 and args[0] in ("--alias", "-a"):
-        alias = args[1]
-        idx = 2
+    clean_args: list[str] = []
+    i = 0
+    while i < len(args):
+        if args[i] in ("--alias", "-a") and i + 1 < len(args):
+            alias = args[i + 1]
+            i += 2
+        else:
+            clean_args.append(args[i])
+            i += 1
 
-    remaining = args[idx:]
-    if len(remaining) < 2:
-        if remaining:
-            sys.stdout.write(" ".join(remaining))
+    if len(clean_args) < 2:
+        if clean_args:
+            sys.stdout.write(" ".join(clean_args))
         return
 
-    session_id = remaining[0]
-    buffer_text = " ".join(remaining[1:])
+    session_id = clean_args[0]
+    buffer_text = " ".join(clean_args[1:])
     replacement = resolve_buffer_replacement(session_id=session_id, buffer_text=buffer_text, alias=alias)
     sys.stdout.write(replacement)
 
