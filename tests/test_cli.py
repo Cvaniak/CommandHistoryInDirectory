@@ -219,6 +219,88 @@ class TestCLI(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self._run_cli(["--since", "invalid_time_xyz"])
 
+    def test_scope_and_hierarchy_cli(self) -> None:
+        cwd = str(Path.cwd().resolve())
+        parent_dir = str(Path.cwd().resolve().parent)
+        sub_dir = str(Path.cwd().resolve() / "test_sub")
+        sub_sub_dir = str(Path.cwd().resolve() / "test_sub" / "deep")
+        external_dir = "/tmp/other_level"
+
+        conn = get_connection(self.db_path)
+        initialize_schema(conn)
+        records = [
+            (parent_dir, "cmd_parent", "s1"),
+            (cwd, "cmd_cwd", "test-session-cli"),
+            (sub_dir, "cmd_sub", "test-session-cli"),
+            (sub_sub_dir, "cmd_deep", "other_sess"),
+            (external_dir, "cmd_external", "s1"),
+        ]
+        for d, cmd, s in records:
+            conn.execute(
+                "INSERT INTO command_history (directory, command, timestamp, session_id, exit_code) VALUES (?, ?, 1000, ?, 0);",
+                (d, cmd, s),
+            )
+        conn.close()
+
+        # 1. Target specific directory (-d / --dir)
+        out_d, _ = self._run_cli(["-r", "--raw", "-d", external_dir])
+        self.assertEqual(out_d.strip(), "cmd_external")
+
+        # 2. Target parent directory (--up / -u)
+        out_up, _ = self._run_cli(["-r", "--raw", "--up"])
+        self.assertIn("cmd_parent", out_up)
+        self.assertNotIn("cmd_cwd", out_up)
+
+        # 3. Global search across all directories (-g / --global)
+        out_g, _ = self._run_cli(["-r", "--raw", "-g"])
+        cmds_g = out_g.strip().split("\n")
+        self.assertEqual(len(cmds_g), 5)
+        self.assertIn("cmd_parent", cmds_g)
+        self.assertIn("cmd_external", cmds_g)
+
+        # 4. Tree search from cwd down (-t / --tree)
+        out_t, _ = self._run_cli(["-r", "--raw", "-t"])
+        cmds_t = out_t.strip().split("\n")
+        self.assertEqual(len(cmds_t), 3)
+        self.assertIn("cmd_cwd", cmds_t)
+        self.assertIn("cmd_sub", cmds_t)
+        self.assertIn("cmd_deep", cmds_t)
+        self.assertNotIn("cmd_parent", cmds_t)
+        self.assertNotIn("cmd_external", cmds_t)
+
+        # 5. Tree search with max depth = 1
+        out_d1, _ = self._run_cli(["-r", "--raw", "-t", "--depth", "1"])
+        cmds_d1 = out_d1.strip().split("\n")
+        self.assertEqual(len(cmds_d1), 2)
+        self.assertIn("cmd_cwd", cmds_d1)
+        self.assertIn("cmd_sub", cmds_d1)
+        self.assertNotIn("cmd_deep", cmds_d1)
+
+        # 6. Scope to active session (-S / --this-session)
+        out_s, _ = self._run_cli(["-r", "--raw", "-t", "-S"])
+        cmds_s = out_s.strip().split("\n")
+        self.assertEqual(len(cmds_s), 2)
+        self.assertIn("cmd_cwd", cmds_s)
+        self.assertIn("cmd_sub", cmds_s)
+        self.assertNotIn("cmd_deep", cmds_s)
+
+        # 7. Rich table with --show-dir
+        out_table, _ = self._run_cli(["-r", "-t", "--show-dir"])
+        self.assertIn("Directory", out_table)
+
+        # 8. Scope flag validation errors
+        with self.assertRaises(SystemExit):
+            self._run_cli(["-g", "-d", "/tmp"])
+
+        with self.assertRaises(SystemExit):
+            self._run_cli(["-g", "-t"])
+
+        with self.assertRaises(SystemExit):
+            self._run_cli(["--depth", "2"])  # depth without tree
+
+        with self.assertRaises(SystemExit):
+            self._run_cli(["--up", "0"])  # up < 1
+
 
 if __name__ == "__main__":
     unittest.main()

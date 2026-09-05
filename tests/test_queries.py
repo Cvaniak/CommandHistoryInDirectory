@@ -321,6 +321,67 @@ class TestQueries(unittest.TestCase):
         no_matches = query_matching_commands(self.conn, directory="/time_test", keyword="fetch", since_ms=2500)
         self.assertEqual(no_matches, [])
 
+    def test_scope_and_hierarchy_queries(self) -> None:
+        # Insert records across directory hierarchy
+        insert_command(
+            self.conn,
+            CommandRecord(directory="/root_app", command="app root", timestamp=1000, session_id="s1", exit_code=0),
+        )
+        insert_command(
+            self.conn,
+            CommandRecord(directory="/root_app/sub1", command="app sub1", timestamp=2000, session_id="s1", exit_code=0),
+        )
+        insert_command(
+            self.conn,
+            CommandRecord(directory="/root_app/sub1/sub2", command="app sub2", timestamp=3000, session_id="s1", exit_code=0),
+        )
+        insert_command(
+            self.conn,
+            CommandRecord(directory="/other_project", command="other cmd", timestamp=4000, session_id="s2", exit_code=0),
+        )
+
+        # 1. Standard single-directory query
+        single = query_recent(self.conn, directory="/root_app")
+        self.assertEqual(len(single), 1)
+        self.assertEqual(single[0].command, "app root")
+
+        # 2. Global query across all directories
+        glob = query_recent(self.conn, directory="/root_app", is_global=True)
+        self.assertEqual(len(glob), 4)
+
+        # 3. Recursive tree query (unlimited depth)
+        tree = query_recent(self.conn, directory="/root_app", recursive=True)
+        self.assertEqual(len(tree), 3)
+        tree_cmds = [r.command for r in tree]
+        self.assertIn("app root", tree_cmds)
+        self.assertIn("app sub1", tree_cmds)
+        self.assertIn("app sub2", tree_cmds)
+        self.assertNotIn("other cmd", tree_cmds)
+
+        # 4. Recursive tree with max_depth=1 (only direct children + root)
+        tree_d1 = query_recent(self.conn, directory="/root_app", recursive=True, max_depth=1)
+        self.assertEqual(len(tree_d1), 2)
+        d1_cmds = [r.command for r in tree_d1]
+        self.assertIn("app root", d1_cmds)
+        self.assertIn("app sub1", d1_cmds)
+        self.assertNotIn("app sub2", d1_cmds)
+
+        # 5. Session filtering
+        sess2 = query_recent(self.conn, directory="/other_project", session_id="s2")
+        self.assertEqual(len(sess2), 1)
+        sess1 = query_recent(self.conn, directory="/other_project", session_id="s1")
+        self.assertEqual(len(sess1), 0)
+
+        # 6. Delete directory history recursive
+        deleted_tree = delete_directory_history(self.conn, directory="/root_app", recursive=True)
+        self.assertEqual(deleted_tree, 3)
+        self.assertEqual(len(query_recent(self.conn, directory="/root_app", is_global=True)), 1)
+
+        # 7. Delete directory history global
+        deleted_glob = delete_directory_history(self.conn, directory="/root_app", is_global=True)
+        self.assertEqual(deleted_glob, 1)
+        self.assertEqual(len(query_recent(self.conn, directory="/root_app", is_global=True)), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

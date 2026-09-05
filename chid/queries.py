@@ -61,11 +61,26 @@ def _build_scope_clause(
     directory: str,
     git_root: str | None,
     params: list[object],
+    is_global: bool = False,
+    recursive: bool = False,
+    max_depth: int | None = None,
 ) -> str:
-    """Helper to generate directory or repository scope WHERE clause."""
+    """Helper to generate directory, tree, or repository scope WHERE clause."""
+    if is_global:
+        return "1=1"
     if git_root:
         params.append(git_root)
         return "git_root = ?"
+    if recursive:
+        clean_dir = directory.rstrip("/")
+        params.extend([clean_dir, f"{clean_dir}/%"])
+        cond = "(directory = ? OR directory LIKE ?)"
+        if max_depth is not None:
+            base_slashes = clean_dir.count("/")
+            max_slashes = base_slashes + max_depth
+            cond += " AND (length(directory) - length(replace(directory, '/', ''))) <= ?"
+            params.append(max_slashes)
+        return cond
     params.append(directory)
     return "directory = ?"
 
@@ -80,10 +95,21 @@ def query_frequency(
     only_invalid: bool = False,
     since_ms: int | None = None,
     until_ms: int | None = None,
+    is_global: bool = False,
+    recursive: bool = False,
+    max_depth: int | None = None,
+    session_id: str | None = None,
 ) -> list[FrequencyStat]:
     """Return command frequency metrics, percentage of total executions, and last run timestamp."""
     count_params: list[object] = []
-    scope_cond = _build_scope_clause(directory, git_root, count_params)
+    scope_cond = _build_scope_clause(
+        directory,
+        git_root,
+        count_params,
+        is_global=is_global,
+        recursive=recursive,
+        max_depth=max_depth,
+    )
     search_cond = ""
     if search:
         search_cond = " AND command LIKE ?"
@@ -97,6 +123,11 @@ def query_frequency(
         time_cond += " AND timestamp <= ?"
         count_params.append(until_ms)
 
+    session_cond = ""
+    if session_id:
+        session_cond = " AND session_id = ?"
+        count_params.append(session_id)
+
     if only_invalid:
         valid_cond = f" AND exit_code IN ({','.join(str(c) for c in INVALID_EXIT_CODES)})"
     elif not include_invalid:
@@ -104,7 +135,7 @@ def query_frequency(
     else:
         valid_cond = ""
 
-    total_query = f"SELECT COUNT(*) AS total FROM command_history WHERE {scope_cond}{search_cond}{time_cond}{valid_cond};"
+    total_query = f"SELECT COUNT(*) AS total FROM command_history WHERE {scope_cond}{search_cond}{time_cond}{session_cond}{valid_cond};"
     total_row = conn.execute(total_query, count_params).fetchone()
     total_count = total_row["total"] if total_row else 0
 
@@ -112,13 +143,22 @@ def query_frequency(
         return []
 
     stats_params: list[object] = []
-    scope_cond_stats = _build_scope_clause(directory, git_root, stats_params)
+    scope_cond_stats = _build_scope_clause(
+        directory,
+        git_root,
+        stats_params,
+        is_global=is_global,
+        recursive=recursive,
+        max_depth=max_depth,
+    )
     if search:
         stats_params.append(f"%{search}%")
     if since_ms is not None:
         stats_params.append(since_ms)
     if until_ms is not None:
         stats_params.append(until_ms)
+    if session_id:
+        stats_params.append(session_id)
     stats_params.append(limit)
 
     stats_query = f"""
@@ -127,7 +167,7 @@ def query_frequency(
         COUNT(*) AS cmd_count,
         MAX(timestamp) AS last_run
     FROM command_history
-    WHERE {scope_cond_stats}{search_cond}{time_cond}{valid_cond}
+    WHERE {scope_cond_stats}{search_cond}{time_cond}{session_cond}{valid_cond}
     GROUP BY command
     ORDER BY cmd_count DESC, last_run DESC
     LIMIT ?;
@@ -160,10 +200,21 @@ def query_recent(
     only_invalid: bool = False,
     since_ms: int | None = None,
     until_ms: int | None = None,
+    is_global: bool = False,
+    recursive: bool = False,
+    max_depth: int | None = None,
+    session_id: str | None = None,
 ) -> list[CommandRecord]:
     """Return recent command executions sorted by timestamp descending."""
     params: list[object] = []
-    scope_cond = _build_scope_clause(directory, git_root, params)
+    scope_cond = _build_scope_clause(
+        directory,
+        git_root,
+        params,
+        is_global=is_global,
+        recursive=recursive,
+        max_depth=max_depth,
+    )
 
     conditions = [scope_cond]
     if search:
@@ -176,6 +227,10 @@ def query_recent(
     if until_ms is not None:
         conditions.append("timestamp <= ?")
         params.append(until_ms)
+
+    if session_id:
+        conditions.append("session_id = ?")
+        params.append(session_id)
 
     if only_invalid:
         conditions.append(f"exit_code IN ({','.join(str(c) for c in INVALID_EXIT_CODES)})")
@@ -226,10 +281,21 @@ def query_first(
     only_invalid: bool = False,
     since_ms: int | None = None,
     until_ms: int | None = None,
+    is_global: bool = False,
+    recursive: bool = False,
+    max_depth: int | None = None,
+    session_id: str | None = None,
 ) -> list[CommandRecord]:
     """Return command executions sorted by timestamp ascending (earliest first)."""
     params: list[object] = []
-    scope_cond = _build_scope_clause(directory, git_root, params)
+    scope_cond = _build_scope_clause(
+        directory,
+        git_root,
+        params,
+        is_global=is_global,
+        recursive=recursive,
+        max_depth=max_depth,
+    )
 
     conditions = [scope_cond]
     if search:
@@ -242,6 +308,10 @@ def query_first(
     if until_ms is not None:
         conditions.append("timestamp <= ?")
         params.append(until_ms)
+
+    if session_id:
+        conditions.append("session_id = ?")
+        params.append(session_id)
 
     if only_invalid:
         conditions.append(f"exit_code IN ({','.join(str(c) for c in INVALID_EXIT_CODES)})")
@@ -286,10 +356,21 @@ def query_matching_commands(
     include_invalid: bool = False,
     since_ms: int | None = None,
     until_ms: int | None = None,
+    is_global: bool = False,
+    recursive: bool = False,
+    max_depth: int | None = None,
+    session_id: str | None = None,
 ) -> list[str]:
     """Return distinct commands containing keyword, ordered by most recent occurrence."""
     params: list[object] = []
-    scope_cond = _build_scope_clause(directory, git_root, params)
+    scope_cond = _build_scope_clause(
+        directory,
+        git_root,
+        params,
+        is_global=is_global,
+        recursive=recursive,
+        max_depth=max_depth,
+    )
     params.append(f"%{keyword}%")
 
     time_cond = ""
@@ -300,6 +381,11 @@ def query_matching_commands(
         time_cond += " AND timestamp <= ?"
         params.append(until_ms)
 
+    session_cond = ""
+    if session_id:
+        session_cond = " AND session_id = ?"
+        params.append(session_id)
+
     valid_cond = ""
     if not include_invalid:
         valid_cond = f" AND (exit_code IS NULL OR exit_code NOT IN ({','.join(str(c) for c in INVALID_EXIT_CODES)}))"
@@ -307,16 +393,31 @@ def query_matching_commands(
     query = f"""
     SELECT command, MAX(timestamp) AS last_seen
     FROM command_history
-    WHERE {scope_cond} AND command LIKE ?{time_cond}{valid_cond}
+    WHERE {scope_cond} AND command LIKE ?{time_cond}{session_cond}{valid_cond}
     GROUP BY command
     ORDER BY last_seen DESC;
     """
     return [row["command"] for row in conn.execute(query, params)]
 
 
-def delete_directory_history(conn: sqlite3.Connection, directory: str) -> int:
-    """Delete all history entries for a given directory. Return number of deleted records."""
-    query = "DELETE FROM command_history WHERE directory = ?;"
+def delete_directory_history(
+    conn: sqlite3.Connection,
+    directory: str,
+    recursive: bool = False,
+    is_global: bool = False,
+) -> int:
+    """Delete history entries for a given directory, tree, or globally. Return number of deleted records."""
+    if is_global:
+        query = "DELETE FROM command_history;"
+        params: tuple[object, ...] = ()
+    elif recursive:
+        clean_dir = directory.rstrip("/")
+        query = "DELETE FROM command_history WHERE directory = ? OR directory LIKE ?;"
+        params = (clean_dir, f"{clean_dir}/%")
+    else:
+        query = "DELETE FROM command_history WHERE directory = ?;"
+        params = (directory,)
+
     with immediate_transaction(conn):
-        cursor = conn.execute(query, (directory,))
+        cursor = conn.execute(query, params)
         return cursor.rowcount

@@ -208,12 +208,6 @@ def _run_query_cli(argv: list[str]) -> None:
         help="Filter command history by keyword substring.",
     )
     parser.add_argument(
-        "-R",
-        "--repo",
-        action="store_true",
-        help="Scope search to the current Git repository root instead of the current directory.",
-    )
-    parser.add_argument(
         "-a",
         "--all",
         action="store_true",
@@ -251,6 +245,70 @@ def _run_query_cli(argv: list[str]) -> None:
         "--raw",
         action="store_true",
         help="Output raw command lines without formatting or tables (one per line).",
+    )
+    scope_group = parser.add_argument_group("Scope & Directory Hierarchy")
+    scope_group.add_argument(
+        "-R",
+        "--repo",
+        action="store_true",
+        help="Scope search to the current Git repository root instead of the current directory.",
+    )
+    scope_group.add_argument(
+        "-g",
+        "--global",
+        dest="global_scope",
+        action="store_true",
+        help="Search command history globally across all directories.",
+    )
+    scope_group.add_argument(
+        "-d",
+        "--dir",
+        type=str,
+        metavar="PATH",
+        help="Target a specific directory instead of the current working directory.",
+    )
+    scope_group.add_argument(
+        "-u",
+        "--up",
+        "--parent",
+        nargs="?",
+        const=1,
+        type=int,
+        metavar="N",
+        help="Target N directory levels up from the current directory (default: 1).",
+    )
+    scope_group.add_argument(
+        "-t",
+        "--tree",
+        "--recursive",
+        action="store_true",
+        help="Recursively include history from all child subdirectories of the target directory.",
+    )
+    scope_group.add_argument(
+        "--depth",
+        "--level",
+        type=int,
+        metavar="N",
+        help="Maximum subdirectory depth when searching recursively with --tree (default: unlimited).",
+    )
+    scope_group.add_argument(
+        "-S",
+        "--this-session",
+        action="store_true",
+        help="Filter commands executed strictly in the current shell session.",
+    )
+    scope_group.add_argument(
+        "--show-dir",
+        dest="show_dir",
+        action="store_true",
+        default=None,
+        help="Display directory column in history table.",
+    )
+    scope_group.add_argument(
+        "--no-dir",
+        dest="show_dir",
+        action="store_false",
+        help="Hide directory column in history table.",
     )
     time_group = parser.add_argument_group("Time Filters")
     time_group.add_argument(
@@ -298,6 +356,19 @@ def _run_query_cli(argv: list[str]) -> None:
 
     args = parser.parse_args(argv)
 
+    # Scope validation
+    if args.global_scope and (args.dir or args.up is not None or args.tree or args.repo):
+        parser.error("Cannot combine --global with directory scope flags (--dir, --up, --tree, --repo).")
+
+    if args.depth is not None:
+        if not args.tree:
+            parser.error("--depth/--level requires --tree/--recursive to be enabled.")
+        if args.depth < 1:
+            parser.error("--depth/--level must be at least 1.")
+
+    if args.up is not None and args.up < 1:
+        parser.error("--up/--parent level must be at least 1.")
+
     from chid.time_utils import resolve_time_filters
 
     try:
@@ -313,9 +384,26 @@ def _run_query_cli(argv: list[str]) -> None:
         parser.error(str(e))
 
     session_id = _get_active_session_id()
+    target_session = session_id if args.this_session else None
     cwd = str(Path.cwd().resolve())
-    git_root_path = find_git_root(cwd)
-    git_root = str(git_root_path) if (args.repo and git_root_path) else None
+
+    # Resolve target directory
+    if args.dir:
+        target_path = Path(args.dir).expanduser().resolve()
+    else:
+        target_path = Path(cwd)
+
+    if args.up is not None:
+        target_path = target_path.parents[min(args.up - 1, len(target_path.parents) - 1)]
+
+    target_dir = str(target_path)
+    git_root_path = find_git_root(target_dir) if args.repo else None
+    git_root = str(git_root_path) if git_root_path else None
+
+    if args.show_dir is not None:
+        show_dir = args.show_dir
+    else:
+        show_dir = bool(args.global_scope or args.tree or (args.repo and git_root))
 
     # Handle direct positional index request e.g. `chid 2`
     if args.index is not None:
@@ -334,8 +422,18 @@ def _run_query_cli(argv: list[str]) -> None:
     )
 
     if args.clear:
-        deleted = delete_directory_history(conn, cwd)
-        print(f"Cleared {deleted} history records for {cwd}.")
+        deleted = delete_directory_history(
+            conn,
+            target_dir,
+            recursive=args.tree,
+            is_global=args.global_scope,
+        )
+        if args.global_scope:
+            print(f"Cleared {deleted} history records globally.")
+        elif args.tree:
+            print(f"Cleared {deleted} history records for tree {target_dir}/**.")
+        else:
+            print(f"Cleared {deleted} history records for {target_dir}.")
         conn.close()
         return
 
@@ -348,12 +446,16 @@ def _run_query_cli(argv: list[str]) -> None:
         # Fetch recent commands to analyze flags
         all_records = query_recent(
             conn,
-            directory=cwd,
+            directory=target_dir,
             limit=1000,
             git_root=git_root,
             include_invalid=args.all,
             since_ms=since_ms,
             until_ms=until_ms,
+            is_global=args.global_scope,
+            recursive=args.tree,
+            max_depth=args.depth,
+            session_id=target_session,
         )
         conn.close()
 
@@ -364,7 +466,21 @@ def _run_query_cli(argv: list[str]) -> None:
         render_flag_analysis(analysis)
         return
 
-    scope_desc = f"Repo: {git_root}" if git_root else f"Dir: {cwd}"
+    if args.global_scope:
+        scope_desc = "Global (All Directories)"
+    elif git_root:
+        scope_desc = f"Repo: {git_root}"
+    elif args.tree:
+        if args.depth:
+            scope_desc = f"Tree: {target_dir}/** (depth {args.depth})"
+        else:
+            scope_desc = f"Tree: {target_dir}/**"
+    else:
+        scope_desc = f"Dir: {target_dir}"
+
+    if args.this_session:
+        scope_desc += f", session: {session_id[:8]}"
+
     scope_str = f"{scope_desc}, {time_label}" if time_label else scope_desc
 
     # Determine display mode
@@ -372,7 +488,7 @@ def _run_query_cli(argv: list[str]) -> None:
         mode = "recent"
         records = query_recent(
             conn,
-            directory=cwd,
+            directory=target_dir,
             limit=args.limit,
             search=args.search,
             git_root=git_root,
@@ -382,6 +498,10 @@ def _run_query_cli(argv: list[str]) -> None:
             only_invalid=args.invalid,
             since_ms=since_ms,
             until_ms=until_ms,
+            is_global=args.global_scope,
+            recursive=args.tree,
+            max_depth=args.depth,
+            session_id=target_session,
         )
         commands = [r.command for r in records]
         if args.invalid:
@@ -393,7 +513,7 @@ def _run_query_cli(argv: list[str]) -> None:
         mode = "first"
         records = query_first(
             conn,
-            directory=cwd,
+            directory=target_dir,
             limit=args.limit,
             search=args.search,
             git_root=git_root,
@@ -401,6 +521,10 @@ def _run_query_cli(argv: list[str]) -> None:
             only_invalid=args.invalid,
             since_ms=since_ms,
             until_ms=until_ms,
+            is_global=args.global_scope,
+            recursive=args.tree,
+            max_depth=args.depth,
+            session_id=target_session,
         )
         commands = [r.command for r in records]
         title = f"Chronological Commands ({scope_str})"
@@ -410,7 +534,7 @@ def _run_query_cli(argv: list[str]) -> None:
         mode = "freq"
         freq_stats = query_frequency(
             conn,
-            directory=cwd,
+            directory=target_dir,
             limit=args.limit,
             search=args.search,
             git_root=git_root,
@@ -418,6 +542,10 @@ def _run_query_cli(argv: list[str]) -> None:
             only_invalid=args.invalid,
             since_ms=since_ms,
             until_ms=until_ms,
+            is_global=args.global_scope,
+            recursive=args.tree,
+            max_depth=args.depth,
+            session_id=target_session,
         )
         commands = [s.command for s in freq_stats]
         title = f"Frequent Commands ({scope_str})"
@@ -433,7 +561,7 @@ def _run_query_cli(argv: list[str]) -> None:
         for cmd in commands:
             print(cmd)
     else:
-        render_history_table(entries, mode=mode, title=title)
+        render_history_table(entries, mode=mode, title=title, show_dir=show_dir, cwd=cwd)
 
 
 def main() -> None:

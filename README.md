@@ -71,11 +71,33 @@ Displays recent commands with execution duration badges and colored exit status 
 chid -r
 ```
 
-### Git Repository-Wide Scope
-Scope queries across the entire Git repository, regardless of what subdirectory you are currently in:
+### Directory Hierarchy & Scope Filtering
+Inspect command history across different directory levels, subdirectories, or globally:
 ```bash
+# Global search across all directories on the system
+chid -r -g
+
+# Inspect another directory without navigating to it
+chid -d ~/code/other-app
+chid -r -d /var/log
+
+# Query parent directory levels (1 level up: --up, 2 levels up: --up 2)
+chid --up
+chid -r --up 2
+
+# Recursive tree search (current directory + all descendant subdirectories)
+chid -t
+chid -r -t
+
+# Recursive search limited to N subdirectory levels down
+chid -t --depth 1
+
+# Scope queries across the entire Git repository
 chid -R
 chid -r -R
+
+# Filter commands run strictly in the current shell session
+chid -r -S
 ```
 
 ### Substring Search & Exit Status Filters
@@ -149,6 +171,13 @@ Instead of retyping long commands, CHID lets you recall any displayed command in
 | `-r`, `--recent` | Sort history by recency (most recent execution first). |
 | `--first` | Sort history chronologically (earliest execution first). |
 | `-R`, `--repo` | Scope query to the current Git repository root. |
+| `-g`, `--global` | Search command history globally across all directories. |
+| `-d`, `--dir <PATH>` | Target a specific directory instead of the current working directory. |
+| `-u`, `--up`, `--parent [N]` | Target N directory levels up from current directory (default: 1). |
+| `-t`, `--tree`, `--recursive` | Recursively include history from all child subdirectories. |
+| `--depth`, `--level <N>` | Maximum subdirectory depth when searching recursively with `--tree`. |
+| `-S`, `--this-session` | Filter commands executed strictly in the current shell session. |
+| `--show-dir` / `--no-dir` | Explicitly display or hide directory column in history table. |
 | `-n`, `-l`, `--limit <N>` | Limit the number of displayed records (default: 20). |
 | `-s`, `-q`, `--search <STR>` | Filter records matching keyword substring. |
 | `-a`, `--all` | Include all commands, including typos and bad parameters (filtered out by default). |

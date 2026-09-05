@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import time
 from typing import TYPE_CHECKING
 
@@ -59,11 +60,27 @@ def format_relative_time(timestamp_ms: int) -> str:
     return f"{diff_sec // 604800}w ago"
 
 
+def format_directory_display(dir_path: str, cwd: str | None = None) -> str:
+    """Format directory path compactly (relative to cwd or home)."""
+    if cwd and dir_path == cwd:
+        return "."
+    if cwd and dir_path.startswith(cwd + "/"):
+        return "./" + dir_path[len(cwd) + 1:]
+    home = str(Path.home())
+    if dir_path == home:
+        return "~"
+    if dir_path.startswith(home + "/"):
+        return "~/" + dir_path[len(home) + 1:]
+    return dir_path
+
+
 def render_history_table(
     entries: list[FrequencyStat] | list[CommandRecord],
     mode: str,
     title: str = "",
     console: Console | None = None,
+    show_dir: bool = False,
+    cwd: str | None = None,
 ) -> None:
     """Render command history entries in a compact Rich table."""
     c = console or Console()
@@ -99,16 +116,21 @@ def render_history_table(
         table.add_column("Status", justify="center", no_wrap=True)
         table.add_column("Duration", justify="right", style="yellow", no_wrap=True)
         table.add_column("Time", justify="right", style="dim", no_wrap=True)
+        if show_dir:
+            table.add_column("Directory", style="blue", no_wrap=True)
         table.add_column("Command", style="white", ratio=1)
 
         for i, rec in enumerate(entries, 1):  # type: ignore[arg-type]
-            table.add_row(
+            row = [
                 str(i),
                 format_status_icon(rec.exit_code),
                 format_duration(rec.duration_ms),
                 format_relative_time(rec.timestamp),
-                rec.command,
-            )
+            ]
+            if show_dir:
+                row.append(format_directory_display(rec.directory, cwd))
+            row.append(rec.command)
+            table.add_row(*row)
 
     c.print(table)
 
